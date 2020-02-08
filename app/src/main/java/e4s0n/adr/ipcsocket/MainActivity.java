@@ -6,6 +6,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import android.annotation.SuppressLint;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.os.SystemClock;
@@ -16,6 +17,9 @@ import android.widget.Toast;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
@@ -55,10 +59,15 @@ public class MainActivity extends AppCompatActivity {
         send.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                String content = inputText.getText().toString();
+                final String content = inputText.getText().toString();
                 if(!"".equals(content))
                 {
-                    printWriter.println(content);
+                    new Thread(){
+                        @Override
+                        public void run() {
+                            printWriter.println(content);
+                        }
+                    }.start();
                     Msg msg = new Msg(content,Msg.TYPE_SENT);
                     msgList.add(msg);
                     adapter.notifyItemInserted(msgList.size()-1);//当有新消息时刷新RecyclerView中的显示
@@ -96,9 +105,11 @@ public class MainActivity extends AppCompatActivity {
     }
     private void connectTCPServer() {
         Socket socket = null;
+        boolean tryreconnect = true;
         while (socket == null) {
             try {
-                socket = new Socket("localhost", 8688);
+                String url[] =loadurl().split(":");
+                socket = new Socket(url[0], Integer.valueOf(url[1]));
                 mClientSocket = socket;
                 printWriter = new PrintWriter(new BufferedWriter(new OutputStreamWriter(socket.getOutputStream())), true);
                 handler.sendEmptyMessage(MESSAGE_SOCKET_CONNECTED);
@@ -109,15 +120,18 @@ public class MainActivity extends AppCompatActivity {
                         Toast.makeText(getApplicationContext(),"连接成功",Toast.LENGTH_SHORT).show();
                     }
                 });
+                tryreconnect = true;
             } catch (IOException e) {
                 SystemClock.sleep(1000);
                 System.out.println("connect tcp server failed, retry...");
+                if (tryreconnect)
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
                         Toast.makeText(getApplicationContext(),"连接重连中",Toast.LENGTH_SHORT).show();
                     }
                 });
+                tryreconnect = false;
             }
         }
 
@@ -148,5 +162,37 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         super.onDestroy();
+    }
+    public String loadurl() {
+        String url = "localhost:8688";
+        File file = new File("sdcard/PQurl.txt");
+        if (!file.exists())
+        {
+            try {
+                file.createNewFile();
+                FileOutputStream outputStream = new FileOutputStream(file,true);
+                outputStream.write(url.getBytes());
+                outputStream.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        else{
+            StringBuilder content = new StringBuilder();
+            try {
+                FileInputStream in = new FileInputStream(file);
+                BufferedReader reader = new BufferedReader(new InputStreamReader(in));
+                String line = "";
+                while ((line = reader.readLine()) != null) {
+                    content.append(line);
+                }
+                reader.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            url = content.toString();
+        }
+
+        return url;
     }
 }
